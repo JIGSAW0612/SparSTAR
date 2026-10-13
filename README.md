@@ -1,188 +1,175 @@
-<p align="center">
-  <img src="assets/logo.png" width="400" style="border:none;box-shadow:none;border-radius:0;background:none;">
-<p>
-  
-# Infinity**⭐️**: Uniﬁed **S**pace**T**ime **A**uto**R**egressive Modeling for Visual Generation
+# SparSTAR
 
+### Sparse Attention for SpaceTime AutoRegressive Video Synthesis
 
-<div align="center">
+Jongbeom Lee<sup>\*</sup>, Hyunwoo Yu<sup>\*</sup>, Jincheol Yang, Jaemin Choi, Suk-Ju Kang<sup>†</sup>
 
-[![demo platform](https://img.shields.io/badge/Play%20with%20Infinity%21-Infinity%20demo%20platform-lightblue)](http://opensource.bytedance.com/discord/invite)&nbsp;
-[![arXiv](https://img.shields.io/badge/arXiv%20paper-2511.04675-b31b1b.svg)](https://arxiv.org/abs/2511.04675)&nbsp;
-[![huggingface weights](https://img.shields.io/badge/%F0%9F%A4%97%20Weights-FoundationVision/Infinity-yellow)](https://huggingface.co/FoundationVision/InfinityStar)&nbsp;
+Sogang University &nbsp;·&nbsp; <sup>\*</sup>Equal contribution &nbsp;·&nbsp; <sup>†</sup>Corresponding author
 
-</div>
-<p align="center" style="font-size: larger;">
-  <a href="http://arxiv.org/abs/2511.04675">Infinity⭐️: Uniﬁed Spacetime AutoRegressive Modeling for Visual Generation</a>
-</p>
+[**Project Page**](https://jigsaw0612.github.io/SparSTAR_project_page/) &nbsp;|&nbsp; [**arXiv**](https://arxiv.org/abs/2608.10519) &nbsp;|&nbsp; [**Paper (PDF)**](https://arxiv.org/pdf/2608.10519)
 
-<!-- <p align="center">
-<img src="assets/show_images.jpg" width=95%>
-<p> -->
+![SparSTAR teaser](https://jigsaw0612.github.io/SparSTAR_project_page/static/images/teaser.png)
 
 ---
-## 🔥 Updates!!
-* April 16, 2026: 🔥 We Release [GRN](https://github.com/MGenAI/GRN), a next-generation visual synthesis framework. Neither diffusion nor autoregressive — GRN is a third way. 🧠 Refines globally like an artist. ⚡ Generates adaptively by complexity. 🏆 New SOTA across image & video. The visual generation paradigm just got rewritten.
-* Nov 7, 2025: 🔥 Paper, Training and Inference Codes && Checkpoints && Demo Website released!
-* Sep 18, 2025: 🎉 InfinityStar is accepted as NeurIPS 2025 Oral.
 
-## 🕹️ Try and Play with Infinity⭐️!
+## Abstract
 
-We provide a [demo website](http://opensource.bytedance.com/discord/invite) for you to play with InfinityStar and generate videos. Enjoy the fun of bitwise video autoregressive modeling!
+InfinityStar extends visual autoregressive generation to video through a sequence of image and clip
+pyramids. Its changing scale and cross-clip context, however, leave late-stage attention costly and make
+sparse patterns reused from diffusion or image VAR models unreliable. We introduce **SparSTAR**, a
+training-free block-sparse attention method tailored to this setting. At each expensive scale and attention
+head, SparSTAR scores contiguous key blocks from the current query and key activations, retains required
+conditioning context, and executes the selected blocks through a forward-only sparse path. We analyze
+cross-scale consistency within a clip, pattern persistence across clip boundaries, and quality degradation
+as reuse spans increasingly distant scales. Across these analyses, important key blocks shift, showing that
+recomputing block selection at each target scale is more reliable than reusing a transferred mask. On 720p
+text-to-video and image-to-video generation, SparSTAR preserves every token and refinement scale while
+providing about a **1.6× end-to-end speedup** and maintaining VBench and paired-output reconstruction
+fidelity close to dense InfinityStar.
 
-## ✨ Overview
-We introduce InfinityStar, a unified spacetime autoregressive framework for high-resolution image and dynamic video synthesis.
+## About this repository
 
-- 🧠 **Unified Spacetime Model**: A purely discrete, autoregressive approach that jointly captures spatial and temporal dependencies within a single, elegant architecture.
-  
-- 🎬 **Versatile Generation**: This unified design naturally supports a variety of generation tasks such as **text-to-image**, **text-to-video**, **image-to-video**, and **long interactive video synthesis** via straightforward temporal autoregression.
-  
-- 🏆 **Leading Performance & Speed**: Through extensive experiments, InfinityStar scores **83.74** on VBench, outperforming all autoregressive models by large margins, even surpassing diffusion competitors like HunyuanVideo, approximately **10x** faster than leading diffusion-based methods.
-  
-- 📖 **Pioneering High-Resolution Autoregressive Generation**: To our knowledge, InfinityStar is the first discrete autoregressive video generator capable of producing industrial-level 720p videos, setting a new standard for quality in its class.
+This repository is the official [InfinityStar](https://github.com/FoundationVision/InfinityStar) codebase
+(commit [`7465753`](https://github.com/FoundationVision/InfinityStar/commit/7465753cef02b206530b380c15f583db534c828f))
+with SparSTAR added on top. SparSTAR is training-free and inference-only: it runs the released InfinityStar
+checkpoints as they are. The InfinityStar code is otherwise unchanged; the commit
+`Import InfinityStar (FoundationVision/InfinityStar@7465753)` is an exact copy of upstream, so
 
+```bash
+git diff d5c7c2a HEAD
+```
 
-### 🔥 Unified modeling for image, video generation and long interactive video synthesis 📈:
+shows everything SparSTAR adds. This release covers 720p 5 s text-to-video and image-to-video generation (Tables 1 and 2 of the paper).
 
-<div align="left">
-    <img src="assets/framework.png" alt="" style="width: 100%;" />
-</div>
+## Where is SparSTAR in the code?
 
-## 🎬 Video Demos
-#### General Aesthetics
-<div align="left">
-<video src="https://github.com/user-attachments/assets/14e2b18b-9234-42ce-bdab-670faeef4b2a" width="100%" controls autoplay loop></video>
-</div>
+The main implementation of SparSTAR is highlighted with `[SparSTAR]` annotations, mainly in
 
-####  Anime & 3D Animation
-<div align="left">
-<video src="https://github.com/user-attachments/assets/478e9571-b550-4c23-a567-6fee9a0afb5b" width="100%" controls autoplay loop></video>
-</div>
+| File | Role |
+|---|---|
+| [`infinity/models/sparstar.py`](infinity/models/sparstar.py) | **New.** Block selection and forward-only block-sparse attention ([`block_sparse_attention`](infinity/models/sparstar.py#L92)) |
+| [`infinity/models/basic.py`](infinity/models/basic.py#L257) | `SelfAttention.forward` calls SparSTAR instead of dense flash-attention at the sparse scales |
+| [`infinity/models/infinity.py`](infinity/models/infinity.py#L561) | `ar_infer_infinity_elegant` reads the options of each generation and implements the optional [+Guidance-off and +Scale-skip](infinity/models/infinity.py#L618) of Table 2 |
+| [`infinity/utils/arg_util.py`](infinity/utils/arg_util.py#L205) | SparSTAR options (`sparstar*` fields of `Args`) |
+| [`tools/infer_video_720p.py`](tools/infer_video_720p.py#L142) | Command-line flags for the 720p demo |
+| [`tools/gen_vbench_720p.py`](tools/gen_vbench_720p.py) | **New.** VBench generation protocol of Tables 1 and 2 |
 
-#### Motion
-<div align="left">
-<video src="https://github.com/user-attachments/assets/adab669b-d38f-4607-9a52-32d8d0bf0e53" width="100%" controls autoplay loop></video>
-</div>
+At every sparse scale (by default the last four scales of the 720p video clip, 26–29), and for every attention head:
 
-#### Extended Application: Long Interactive Videos
-<div align="center">
-<video src="https://github.com/user-attachments/assets/411666a6-563d-4551-a3f8-dc5de00436c1" width="100%" controls autoplay loop></video>
-</div>
+1. Queries and keys are split into contiguous blocks of 128 tokens, and every (query block, key block) pair is scored by the dot product of the two block means.
+2. The KV-cached conditioning prefix (reference scales and text) is always kept.
+3. Among the key blocks of the current scale, the top ⌈ρ<sub>s</sub> · N<sub>s</sub>⌉ are kept, where ρ<sub>s</sub> is the density of scale *s* and N<sub>s</sub> its number of key blocks.
+4. FlexAttention runs on the selected blocks only. The block mask is built for the forward pass only (the backward-only index tables are skipped).
 
-## Benchmark
+The selection is recomputed at every scale and repetition step; no mask is reused. All other scales use dense attention, and every token and refinement scale is still generated.
 
-### Achieve sota performance on image generation benchmark:
+## Setup
 
-<div align="left">
-    <img src="assets/Infinitystar_image_gen_benchmark.png" alt="Image Generation Evaluation" style="width: 100%;" />
-</div>
+**Environment.** Follow InfinityStar:
 
-### Achieve sota performance on video generation benchmark:
+```bash
+pip3 install -r requirements.txt
+pip3 install flash-attn --no-build-isolation   # dense attention of InfinityStar
+```
 
-<div align="left">
-    <img src="assets/Infinitystar_videogen_benchmark.png" alt="" style="width: 100%;" />
-</div>
+The paper results were produced with Python 3.11, PyTorch 2.5.1 (CUDA 12.4) and flash-attn 2.7.4.post1 on NVIDIA H100 NVL GPUs.
+SparSTAR builds FlexAttention `BlockMask` objects directly and therefore expects PyTorch 2.5.1, the version pinned in `requirements.txt`.
 
-### Surpassing diffusion competitors like HunyuanVideo*:
+**Checkpoints.** SparSTAR uses the released InfinityStar 720p checkpoints:
 
-<div align="left">
-    <img src="assets/Infinitystar_videogen_humaneval.png" alt="" style="width: 100%;" />
-</div>
+```bash
+hf download FoundationVision/InfinityStar --revision 3480598274c0c87c342a24d201fa3549506b5be5 \
+    --include "infinitystar_8b_720p_weights/*" --include "text_encoder/*" --include "infinitystar_videovae.pth" \
+    --local-dir ./checkpoints
+```
 
-
-## Visualization
-
-### Text to image examples
-
-<div align="left">
-    <img src="assets/supp_show_images.png" alt="Text to Image Examples" style="width: 100%;" />
-</div>
-
-### Image to video examples
-
-<div align="left">
-    <img src="assets/i2v_examples.png" alt="Image to Video Examples" style="width: 100%;" />
-</div>
-
-### Video extrapolation examples
-
-<div align="left">
-    <img src="assets/v2v_examples.png" alt="Video Extrapolation Examples" style="width: 100%;" />
-</div>
-
-## 📑 Open-Source Plan
-  - [x] Training Code 
-  - [x] Web Demo 
-  - [x] InfinityStar Inference Code
-  - [x] InfinityStar Models Checkpoints
-  - [x] InfinityStar-Interact Inference Code
-  - [x] InfinityStar-Interact Checkpoints
-
-
-## Installation
-1. We use FlexAttention to speedup training, which requires `torch>=2.5.1`.
-2. Install other pip packages via `pip3 install -r requirements.txt`.
-
-
-## Training Scripts
-We provide a comprehensive workflow for training and finetuning our model, covering data organization, feature extraction, and training scripts. For detailed instructions, please refer to `data/README.md`.
+```
+checkpoints/
+├── infinitystar_8b_720p_weights/
+├── infinitystar_videovae.pth
+└── text_encoder/flan-t5-xl-official/
+```
 
 ## Inference
-*   **720p Video Generation:** 
-    Use `tools/infer_video_720p.py` to generate 5-second videos at 720p resolution. Due to the high computational cost of training, our released 720p model is trained for 5-second video generation. This script also supports image-to-video generation by specifying an image path.
-    ```bash
-    python3 tools/infer_video_720p.py
-    ```
 
-*   **480p Variable-Length Video Generation:**
-    We also provide an intermediate checkpoint for 480p resolution, capable of generating videos of 5 and 10 seconds. Since this model is not specifically optimized for Text-to-Video (T2V), we recommend using the experimental Image-to-Video (I2V) and Video-to-Video (V2V) modes for better results. To specify the video duration, you can edit the `generation_duration` variable in `tools/infer_video_480p.py` to either 5 or 10. This script also supports image-to-video and video continuation by providing a path to an image or a video.
-    ```bash
-    python3 tools/infer_video_480p.py
-    ```
+`tools/infer_video_720p.py` is the InfinityStar 720p demo with SparSTAR flags added. Without flags it runs dense InfinityStar.
 
-*   **480p Long Interactive Video Generation:**
-    Use `tools/infer_interact_480p.py` to generate a long interactive video in 480p. This script supports interactive video generation. You can provide a reference video and multiple prompts. The model will generate a video interactively with your assistance. 
-    ```bash
-    python3 tools/infer_interact_480p.py
-    ```
+```bash
+# Text-to-video
+python3 tools/infer_video_720p.py --checkpoints_dir ./checkpoints --image_path '' \
+    --prompt "A corgi running on the beach at sunset" --sparstar 1 --save_path output/t2v_sparstar.mp4
+
+# Image-to-video (default reference image: assets/reference_image.webp)
+python3 tools/infer_video_720p.py --checkpoints_dir ./checkpoints --sparstar 1 --save_path output/i2v_sparstar.mp4
+
+# Table 2 add-ons
+python3 tools/infer_video_720p.py --checkpoints_dir ./checkpoints --sparstar 1 --sparstar_guidance_off 26   # + Guidance-off
+python3 tools/infer_video_720p.py --checkpoints_dir ./checkpoints --sparstar 1 --sparstar_scale_skip 29     # + Scale-skip
+```
+
+| Option | Default | Meaning |
+|---|---|---|
+| `--sparstar` | `0` | `1` enables block-sparse attention |
+| `--sparstar_density` | `26:0.625,27:0.1875,28:0.1875,29:0.09375` | `scale:ρ` pairs: the sparse scales and the fraction of current-scale key blocks kept at each (paper setting) |
+| `--sparstar_guidance_off` | `-1` | Scale index from which the unconditional CFG branch is dropped (`26` in Table 2); `-1` disables it |
+| `--sparstar_scale_skip` | `''` | Video scales that are not run (`29` in Table 2) |
+
+The first SparSTAR generation in a process also compiles the FlexAttention kernels, so time the second and later generations.
+A 720p generation needs about 70 GB of GPU memory. The speedups in the paper are end-to-end wall-clock times on a single H100 NVL GPU that no other job was using.
+
+## Reproducing Tables 1 and 2
+
+`tools/gen_vbench_720p.py` generates the 720p 5 s VBench videos with the protocol of the paper.
+
+- **T2V.** 944 unique VBench prompts × 5 seeds (41–45). The GPT-refined prompts in `evaluation/VBench_rewrited_prompt.json` are the model input, and files are named after the official VBench prompts.
+- **I2V.** 355 VBench-I2V images (16:9 crop), seed 41. Put `i2v-bench-info.json` and the cropped images (`crop/16-9/`) from [VBench-I2V](https://github.com/Vchitect/VBench/tree/master/vbench2_beta_i2v) under `data/vbench_i2v/`.
+
+```bash
+CKPT=./checkpoints
+for TASK in t2v i2v; do
+  python3 tools/gen_vbench_720p.py --task $TASK --checkpoints_dir $CKPT --out_dir output/vbench/${TASK}_dense
+  python3 tools/gen_vbench_720p.py --task $TASK --checkpoints_dir $CKPT --out_dir output/vbench/${TASK}_sparstar --sparstar 1
+  python3 tools/gen_vbench_720p.py --task $TASK --checkpoints_dir $CKPT --out_dir output/vbench/${TASK}_goff      --sparstar 1 --sparstar_guidance_off 26
+  python3 tools/gen_vbench_720p.py --task $TASK --checkpoints_dir $CKPT --out_dir output/vbench/${TASK}_skip      --sparstar 1 --sparstar_scale_skip 29
+done
+```
+
+Samples have a flat index (`item × samples + sample`), so a run can be split across GPUs with `--start/--end`.
+Finished videos are skipped, so a stopped run can be restarted with the same command.
+Each run writes `mp4/` and `latency.jsonl`. Restarting the process every ~100 videos keeps the memory used by the compiled sparse kernels bounded.
+
+- **VBench.** Run the official [VBench](https://github.com/Vchitect/VBench) / VBench-I2V evaluation on `<out_dir>/mp4`.
+- **Fidelity to dense InfinityStar (PSNR / SSIM / LPIPS).** Files with the same name in the dense and SparSTAR folders share the prompt and seed. Compare them frame by frame.
 
 ## Citation
-If our work assists your research, feel free to give us a star ⭐ or cite us using:
 
-```
-@Article{VAR,
-      title={Visual Autoregressive Modeling: Scalable Image Generation via Next-Scale Prediction}, 
-      author={Keyu Tian and Yi Jiang and Zehuan Yuan and Bingyue Peng and Liwei Wang},
-      year={2024},
-      eprint={2404.02905},
-      archivePrefix={arXiv},
-      primaryClass={cs.CV}
+```bibtex
+@article{lee2026sparstar,
+  title   = {SparSTAR: Sparse Attention for SpaceTime AutoRegressive Video Synthesis},
+  author  = {Lee, Jongbeom and Yu, Hyunwoo and Yang, Jincheol and Choi, Jaemin and Kang, Suk-Ju},
+  journal = {arXiv preprint arXiv:2608.10519},
+  year    = {2026}
 }
 ```
 
-```
-@misc{Infinity,
-    title={Infinity: Scaling Bitwise AutoRegressive Modeling for High-Resolution Image Synthesis}, 
-    author={Jian Han and Jinlai Liu and Yi Jiang and Bin Yan and Yuqi Zhang and Zehuan Yuan and Bingyue Peng and Xiaobing Liu},
-    year={2024},
-    eprint={2412.04431},
-    archivePrefix={arXiv},
-    primaryClass={cs.CV},
-    url={https://arxiv.org/abs/2412.04431}, 
-}
-```
+SparSTAR is built on InfinityStar; please also cite it:
 
-```
+```bibtex
 @misc{InfinityStar,
-      title={InfinityStar: Unified Spacetime AutoRegressive Modeling for Visual Generation}, 
-      author={Jinlai Liu and Jian Han and Bin Yan and Hui Wu and Fengda Zhu and Xing Wang and Yi Jiang and Bingyue Peng and Zehuan Yuan},
-      year={2025},
-      eprint={2511.04675},
-      archivePrefix={arXiv},
-      primaryClass={cs.CV},
-      url={https://arxiv.org/abs/2511.04675}, 
+  title         = {InfinityStar: Unified Spacetime AutoRegressive Modeling for Visual Generation},
+  author        = {Jinlai Liu and Jian Han and Bin Yan and Hui Wu and Fengda Zhu and Xing Wang and Yi Jiang and Bingyue Peng and Zehuan Yuan},
+  year          = {2025},
+  eprint        = {2511.04675},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.CV},
+  url           = {https://arxiv.org/abs/2511.04675}
 }
 ```
+
+## Acknowledgement
+
+This code is built on [InfinityStar](https://github.com/FoundationVision/InfinityStar). The sparse kernels use PyTorch [FlexAttention](https://pytorch.org/blog/flexattention/).
 
 ## License
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+This project is released under the MIT License, the license of InfinityStar. See [LICENSE](LICENSE).

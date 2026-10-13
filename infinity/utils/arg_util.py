@@ -201,6 +201,16 @@ class Args(Tap):
     noise_input: int = 0  # Whether to add noise to the input
     reduce_accumulate_error_method: str = 'bsc'  # Method to reduce accumulation error
     
+    # ==================================================================================================================
+    # ============================================ [SparSTAR] Inference ================================================
+    # ==================================================================================================================
+    # [SparSTAR] Training-free block-sparse attention (infinity/models/sparstar.py). All options are inference-only.
+    sparstar: int = 0  # [SparSTAR] 1: block-sparse attention on the scales listed in sparstar_density
+    sparstar_density: str = '26:0.625,27:0.1875,28:0.1875,29:0.09375'  # [SparSTAR] "scale_index:keep_ratio,..." fraction of current-scale key blocks kept per scale (720p 5s setting of the paper)
+    sparstar_block_size: int = 128  # [SparSTAR] query/key block size (128 in the paper)
+    sparstar_guidance_off: int = -1  # [SparSTAR] >= 0: drop the unconditional CFG branch from this scale index on (Table 2 "+Guidance-off" uses 26); -1: off
+    sparstar_scale_skip: str = ''  # [SparSTAR] comma-separated video scale indices to skip (Table 2 "+Scale-skip" uses "29"); '': off
+
 
 
     ############################  Attention! The following arguments and configurations are set automatically, you can skip reading the following part ###############################

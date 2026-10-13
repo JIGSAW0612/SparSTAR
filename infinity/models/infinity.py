@@ -25,6 +25,7 @@ from torch.nn.attention.flex_attention import flex_attention
 import infinity.utils.dist as dist
 from infinity.utils.dist import for_visualize
 from infinity.models.basic import flash_fused_op_installed, SelfAttnBlock, FastRMSNorm
+from infinity.models import sparstar  # [SparSTAR]
 from infinity.models.rope import precompute_rope4d_freqs_grid
 from infinity.models.flex_attn_mask import build_flex_attn_func
 from infinity.schedules.dynamic_resolution import get_dynamic_resolution_meta, get_first_full_spatial_size_scale_index, get_activated_h_div_w_templates
@@ -557,6 +558,11 @@ class Infinity(nn.Module):
         assert len(cfg_list) >= len(scale_schedule)
         assert len(tau_list) >= len(scale_schedule)
         assert args.use_cfg + args.use_apg == 1
+        # [SparSTAR] Read the SparSTAR options for this generation: block-sparse attention (applied inside
+        #   SelfAttention, infinity/models/basic.py) and the two optional add-ons of Table 2 handled in this loop.
+        sparstar.configure(args)
+        sparstar_guidance_off = getattr(args, 'sparstar_guidance_off', -1)  # first scale without the unconditional branch (-1: off)
+        sparstar_scale_skip = sparstar.parse_scale_list(getattr(args, 'sparstar_scale_skip', ''))  # video scales to skip
         device = label_B_or_BLT[0].device
         if self.apply_spatial_patchify:
             vae_scale_schedule = [(pt, 2*ph, 2*pw) for pt, ph, pw in scale_schedule]
@@ -609,11 +615,32 @@ class Infinity(nn.Module):
                 target_pn = vae_scale_schedule[-1]
             cfg = cfg_list[si]
             infer_repeat_times = min(repeat_times, args.max_repeat_times)
+            # [SparSTAR] +Guidance-off (Table 2): from scale `sparstar_guidance_off` on, only the conditional branch
+            #   is run (cfg = 1); its batch rows are cut from the hidden states and the KV cache below.
+            guidance_off = 0 <= sparstar_guidance_off <= si
+            if guidance_off:
+                cfg = 1
+            # [SparSTAR] +Scale-skip (Table 2): no transformer step at this video scale. The accumulated codes are
+            #   upsampled to its resolution without adding detail; an empty KV entry keeps the cache eviction in basic.py valid.
+            if si in sparstar_scale_skip:
+                assert si >= scales_in_one_clip, 'scale-skip is only defined for video scales'
+                for b in self.unregistered_blocks:
+                    b.attn.cached_k[si], b.attn.cached_v[si] = None, None
+                summed_codes[-1] = F.interpolate(summed_codes[-1], size=target_pn, mode=vae.quantizer.z_interplote_up)
+                infer_repeat_times = 0
             for repeat_idx in range(infer_repeat_times):
                 # print(f'real scale ind is : {cum_scales+repeat_idx}')
                 rope_cache = get_visual_rope_embeds(self.rope2d_freqs_grid, scale_schedule, si, cum_scales+repeat_idx, device, args, context_info, first_full_spatial_size_scale_index)
                 pbar.update(1)
                 last_repetition_step = (repeat_idx == (infer_repeat_times-1))
+                # [SparSTAR] +Guidance-off: drop the unconditional rows (batch index >= B) of the input and the KV cache
+                if guidance_off and last_stage.shape[0] > B:
+                    last_stage = last_stage[:B].contiguous()
+                    for b in self.unregistered_blocks:
+                        for ind in list(b.attn.cached_k.keys()):
+                            if b.attn.cached_k[ind] is not None and b.attn.cached_k[ind].shape[0] > B:
+                                b.attn.cached_k[ind] = b.attn.cached_k[ind][:B].contiguous()
+                                b.attn.cached_v[ind] = b.attn.cached_v[ind][:B].contiguous()
                 for block_idx, b in enumerate(block_chunks):
                     last_stage = b(x=last_stage, cond_BD=cond_BD_or_gss, ca_kv=ca_kv, attn_bias_or_two_vector=attn_mask, attn_fn=None, scale_schedule=scale_schedule, rope2d_freqs_grid=rope_cache, scale_ind=si, context_info=context_info, last_repetition_step=last_repetition_step, ref_text_scale_inds=ref_text_scale_inds)
                 logits_BlV = self.get_logits_during_infer(last_stage, is_semantic_scale=rel_si_in_one_clip < args.semantic_scales).mul(1/tau_list[si])
@@ -682,6 +709,7 @@ class Infinity(nn.Module):
                 last_stage = self.embeds_codes2input(last_stage, bs//B)
         summed_codes = torch.cat(summed_codes, dim=-3)
         for b in self.unregistered_blocks: b.attn.kv_caching(False)
+        sparstar.reset()  # [SparSTAR] other inference paths (e.g. interactive generation) stay dense
         if return_summed_code_only:
             return summed_codes
         else:

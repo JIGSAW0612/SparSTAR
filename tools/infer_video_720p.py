@@ -138,8 +138,22 @@ if __name__ == '__main__':
     # To utilize the GPT model, ensure the following environment variables are set:
     # export OPEN_API_KEY="YOUR_API_KEY"
     # export GLOBAL_AZURE_ENDPOINT="YOUR_ENDPOINT"
+
+    # [SparSTAR] Command-line options. Without flags this is the original InfinityStar demo (dense attention, I2V example).
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--checkpoints_dir', default='./')
+    parser.add_argument('--prompt', default="A handsome smiling gardener inspecting plants, realistic cinematic lighting, detailed textures, ultra-realistic")
+    parser.add_argument('--image_path', default='assets/reference_image.webp', help="reference image for I2V; pass '' for T2V")
+    parser.add_argument('--seed', type=int, default=41)
+    parser.add_argument('--save_path', default='output/gen_videos/demo.mp4')
+    parser.add_argument('--sparstar', type=int, default=0, help='1: SparSTAR block-sparse attention (Table 1)')
+    parser.add_argument('--sparstar_density', default='26:0.625,27:0.1875,28:0.1875,29:0.09375', help='per-scale key-block keep ratio')
+    parser.add_argument('--sparstar_guidance_off', type=int, default=-1, help='26: "+Guidance-off" of Table 2')
+    parser.add_argument('--sparstar_scale_skip', default='', help='"29": "+Scale-skip" of Table 2')
+    cli = parser.parse_args()
+
     enable_rewriter=0
-    checkpoints_dir = './'
+    checkpoints_dir = cli.checkpoints_dir
     
 
     # infer args
@@ -169,15 +183,20 @@ if __name__ == '__main__':
     args.semantic_scales=12
     args.max_repeat_times=10000
     args.enable_rewriter=enable_rewriter
+    # [SparSTAR] inference options (read by Infinity.ar_infer_infinity_elegant)
+    args.sparstar = cli.sparstar
+    args.sparstar_density = cli.sparstar_density
+    args.sparstar_guidance_off = cli.sparstar_guidance_off
+    args.sparstar_scale_skip = cli.sparstar_scale_skip
 
     # load models
     pipe = InferencePipe(args)
 
     
-    prompt = "A handsome smiling gardener inspecting plants, realistic cinematic lighting, detailed textures, ultra-realistic"
-    image_path = 'assets/reference_image.webp'  # Remove this for Text-to-Video (T2V) generation
+    prompt = cli.prompt  # [SparSTAR] from the command line
+    image_path = cli.image_path or None  # [SparSTAR] --image_path '' for Text-to-Video (T2V) generation
     data = {
-        'seed': 41,
+        'seed': cli.seed,
         'image_path': image_path,
         'prompt': prompt,
     }
@@ -194,8 +213,9 @@ if __name__ == '__main__':
     data['prompt'] = prompt
                 
     output_dict = perform_inference(pipe, data, args)
-    save_dir = 'output'
-    gen_video_path = osp.join(os.path.join(save_dir, 'gen_videos'), f'demo.mp4')
+    gen_video_path = cli.save_path  # [SparSTAR]
     save_video(output_dict['output'], fps=args.fps, save_filepath=gen_video_path)
+    # [SparSTAR] The first SparSTAR call also compiles the FlexAttention kernels, so time a second call for speed.
+    print(f"Generation time: {output_dict['elapsed_time']:.1f}s")
             
     print(f"Video genernation done: {gen_video_path=}")

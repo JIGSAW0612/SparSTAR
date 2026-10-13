@@ -17,6 +17,7 @@ import numpy as np
 
 from infinity.models.rope import apply_rotary_emb
 from infinity.utils.sequence_parallel import sp_all_to_all, SequenceParallelManager as sp_manager
+from infinity.models import sparstar  # [SparSTAR] block-sparse attention for the late scales
 
 # Import flash_attn's fused ops
 try:
@@ -253,6 +254,12 @@ class SelfAttention(nn.Module):
             scale = self.head_dim**-0.5
             if self.use_flex_attn and attn_fn is not None:
                 attn_output = attn_fn(query_states.to(value_states.dtype), key_states.to(value_states.dtype), value_states, scale=scale).transpose(1, 2).reshape(B, L, C)
+            # [SparSTAR] Block-sparse attention at the expensive late scales (replaces the dense flash-attn call below).
+            #   key_states / value_states hold [KV-cached reference scales + text | current scale]; the cached
+            #   prefix is always kept and the current-scale key blocks are selected per head and query block.
+            elif sparstar.is_sparse_scale(scale_ind):
+                attn_output = sparstar.block_sparse_attention(query_states.to(torch.bfloat16), key_states.to(torch.bfloat16), value_states.to(torch.bfloat16), scale, scale_ind)
+                attn_output = attn_output.transpose(1, 2).reshape(B, L, C)
             else:
                 # fa2, flash_attn_func input/output should be (batch_size, seqlen, nheads, headdim)
                 from flash_attn import flash_attn_qkvpacked_func, flash_attn_func
