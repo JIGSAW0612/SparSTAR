@@ -1,22 +1,24 @@
 # Copyright (c) 2026 SparSTAR Authors
 # SPDX-License-Identifier: MIT
 """
-[SparSTAR] 720p 5 s VBench generation used for Tables 1 and 2 of the paper (dense InfinityStar or SparSTAR).
+[SparSTAR] 5 s VBench generation used in the paper: 720p (Tables 1 and 2) and 480p (supp. Table 7).
+SparSTAR is on by default; --dense generates the dense InfinityStar reference.
 
-T2V : 944 unique VBench prompts x 5 seeds (41..45). The model input is the GPT-refined prompt from
-      evaluation/VBench_rewrited_prompt.json; files are named after the official VBench prompt
-      ("{prompt_en}-{sample}.mp4") so the standard VBench evaluation can be run on the output folder.
+T2V : 944 unique VBench prompts; 720p uses 5 seeds (41..45), 480p one seed (41). The model input is the
+      GPT-refined prompt from evaluation/VBench_rewrited_prompt.json; files are named after the official
+      VBench prompt ("{prompt_en}-{sample}.mp4") so the standard VBench evaluation can be run on the output folder.
 I2V : 355 VBench-I2V images (16:9 crop) x 1 seed (41), named "{image name}-{sample}.mp4".
 Samples are addressed by a flat index  idx = item_index * nsamples + sample_index,  and finished
 samples are skipped, so a run can be split with --start/--end and resumed.
 
-  # dense InfinityStar
-  python tools/gen_vbench_720p.py --task t2v --out_dir output/vbench/t2v_dense
-  # SparSTAR (Table 1)
-  python tools/gen_vbench_720p.py --task t2v --out_dir output/vbench/t2v_sparstar --sparstar 1
+  # SparSTAR (Table 1) and the dense InfinityStar reference
+  python tools/gen_vbench.py --task t2v --out_dir output/vbench/720p_t2v_sparstar
+  python tools/gen_vbench.py --task t2v --out_dir output/vbench/720p_t2v_dense --dense
   # + Guidance-off / + Scale-skip (Table 2)
-  python tools/gen_vbench_720p.py --task t2v --out_dir output/vbench/t2v_goff --sparstar 1 --sparstar_guidance_off 26
-  python tools/gen_vbench_720p.py --task t2v --out_dir output/vbench/t2v_skip --sparstar 1 --sparstar_scale_skip 29
+  python tools/gen_vbench.py --task t2v --out_dir output/vbench/720p_t2v_goff --sparstar_guidance_off 26
+  python tools/gen_vbench.py --task t2v --out_dir output/vbench/720p_t2v_skip --sparstar_scale_skip 29
+  # 480p (supp. Table 7)
+  python tools/gen_vbench.py --resolution 480p --task t2v --out_dir output/vbench/480p_t2v_sparstar
   # I2V: same flags with --task i2v
 """
 import os
@@ -46,29 +48,30 @@ REPO = osp.dirname(osp.dirname(osp.abspath(__file__)))
 def get_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument('--task', choices=['t2v', 'i2v'], required=True)
+    parser.add_argument('--resolution', choices=['720p', '480p'], default='720p')
     parser.add_argument('--out_dir', required=True)
     parser.add_argument('--checkpoints_dir', default='./')
     parser.add_argument('--start', type=int, default=0, help='first flat index')
     parser.add_argument('--end', type=int, default=-1, help='last flat index (exclusive); -1: all')
-    parser.add_argument('--nsamples', type=int, default=-1, help='samples per prompt/image; -1: 5 for T2V, 1 for I2V (paper setting)')
+    parser.add_argument('--nsamples', type=int, default=-1, help='samples per prompt/image; -1: paper setting (5 for 720p T2V, otherwise 1)')
     parser.add_argument('--seed_base', type=int, default=41)
     parser.add_argument('--vbench_i2v_dir', default='data/vbench_i2v', help='folder with i2v-bench-info.json and crop/16-9/')
     parser.add_argument('--warmup', type=int, default=1, help='1: generate the first sample once before timing (compiles the FlexAttention kernels)')
     # SparSTAR options (see infinity/utils/arg_util.py)
-    parser.add_argument('--sparstar', type=int, default=0)
-    parser.add_argument('--sparstar_density', default='26:0.625,27:0.1875,28:0.1875,29:0.09375')
+    parser.add_argument('--dense', action='store_true', help='dense InfinityStar attention instead of SparSTAR')
+    parser.add_argument('--sparstar_density', default='', help="'': paper setting (720p: 26-29, 480p: 24-27)")
     parser.add_argument('--sparstar_guidance_off', type=int, default=-1)
     parser.add_argument('--sparstar_scale_skip', default='')
     return parser
 
 
 def build_args(cli):
-    # 720p 5 s inference configuration of tools/infer_video_720p.py
+    # 5 s inference configuration of tools/infer_video_720p.py / tools/infer_video_480p.py
     args = Args()
-    args.pn = '0.90M'
+    args.pn = '0.90M' if cli.resolution == '720p' else '0.40M'
     args.fps = 16
     args.video_frames = 81
-    args.model_path = osp.join(cli.checkpoints_dir, 'infinitystar_8b_720p_weights')
+    args.model_path = osp.join(cli.checkpoints_dir, f'infinitystar_8b_{cli.resolution}_weights')
     args.checkpoint_type = 'torch_shard'
     args.vae_path = osp.join(cli.checkpoints_dir, 'infinitystar_videovae.pth')
     args.text_encoder_ckpt = osp.join(cli.checkpoints_dir, 'text_encoder/flan-t5-xl-official/')
@@ -82,17 +85,24 @@ def build_args(cli):
     args.tau_image = 1
     args.tau_video = 0.4
     args.apg_norm_threshold = 0.05
-    args.image_scale_repetition = '[3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3]'
-    args.video_scale_repetition = '[3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 2, 1, 1]'
+    if cli.resolution == '720p':
+        args.image_scale_repetition = '[3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3]'
+        args.video_scale_repetition = '[3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 2, 1, 1]'
+        args.detail_scale_min_tokens = 750
+        args.semantic_scales = 12
+    else:
+        args.videovae = 10
+        args.image_scale_repetition = '[3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3]'
+        args.video_scale_repetition = '[3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 2, 1]'
+        args.detail_scale_min_tokens = 350
+        args.semantic_scales = 11
     args.append_duration2caption = 1
     args.use_two_stage_lfq = 1
-    args.detail_scale_min_tokens = 750
-    args.semantic_scales = 12
     args.max_repeat_times = 10000
     args.enable_rewriter = 0
     args.context_from_largest_no = 1
     # SparSTAR
-    args.sparstar = cli.sparstar
+    args.sparstar = 0 if cli.dense else 1
     args.sparstar_density = cli.sparstar_density
     args.sparstar_guidance_off = cli.sparstar_guidance_off
     args.sparstar_scale_skip = cli.sparstar_scale_skip
@@ -171,11 +181,11 @@ class Generator:
 
 def main():
     cli = get_parser().parse_args()
-    nsamples = cli.nsamples if cli.nsamples > 0 else (5 if cli.task == 't2v' else 1)
+    nsamples = cli.nsamples if cli.nsamples > 0 else (5 if (cli.resolution, cli.task) == ('720p', 't2v') else 1)
     items = load_items(cli)
     end = len(items) * nsamples if cli.end < 0 else min(cli.end, len(items) * nsamples)
     os.makedirs(osp.join(cli.out_dir, 'mp4'), exist_ok=True)
-    print(f'[{cli.task}] {len(items)} items x {nsamples} samples, range [{cli.start}, {end}), sparstar={cli.sparstar} '
+    print(f'[{cli.resolution} {cli.task}] {len(items)} items x {nsamples} samples, range [{cli.start}, {end}), sparstar={int(not cli.dense)} '
           f'density={cli.sparstar_density} guidance_off={cli.sparstar_guidance_off} scale_skip={cli.sparstar_scale_skip!r}', flush=True)
 
     args = build_args(cli)
@@ -187,7 +197,7 @@ def main():
         mp4 = osp.join(cli.out_dir, 'mp4', f'{name}-{sample_idx}.mp4')
         if not osp.exists(mp4):
             todo.append((idx, text, image_path, cli.seed_base + sample_idx, mp4))
-    if cli.warmup and todo:
+    if cli.warmup and not cli.dense and todo:
         generate(*todo[0][1:4])
     for idx, text, image_path, seed, mp4 in todo:
         video, latency = generate(text, image_path, seed)

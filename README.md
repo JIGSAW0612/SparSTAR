@@ -39,7 +39,10 @@ checkpoints as they are. The InfinityStar code is otherwise unchanged; the commi
 git diff d5c7c2a HEAD
 ```
 
-shows everything SparSTAR adds. This release covers 720p 5 s text-to-video and image-to-video generation (Tables 1 and 2 of the paper).
+shows everything SparSTAR adds. This release covers 5 s text-to-video and image-to-video generation at 720p
+(Tables 1 and 2 of the paper) and 480p (supplementary Table 7). **SparSTAR is on by default**: the inference
+scripts run SparSTAR without any flag, and `--dense` runs the original dense InfinityStar.
+10 s long-video generation (Table 3) is not part of this release and always runs dense attention.
 
 ## Where is SparSTAR in the code?
 
@@ -47,14 +50,15 @@ The main implementation of SparSTAR is highlighted with `[SparSTAR]` annotations
 
 | File | Role |
 |---|---|
-| [`infinity/models/sparstar.py`](infinity/models/sparstar.py) | **New.** Block selection and forward-only block-sparse attention ([`block_sparse_attention`](infinity/models/sparstar.py#L92)) |
+| [`infinity/models/sparstar.py`](infinity/models/sparstar.py) | **New.** Default sparse scales ([`configure`](infinity/models/sparstar.py#L62)), block selection and forward-only block-sparse attention ([`block_sparse_attention`](infinity/models/sparstar.py#L112)) |
 | [`infinity/models/basic.py`](infinity/models/basic.py#L257) | `SelfAttention.forward` calls SparSTAR instead of dense flash-attention at the sparse scales |
-| [`infinity/models/infinity.py`](infinity/models/infinity.py#L561) | `ar_infer_infinity_elegant` reads the options of each generation and implements the optional [+Guidance-off and +Scale-skip](infinity/models/infinity.py#L618) of Table 2 |
-| [`infinity/utils/arg_util.py`](infinity/utils/arg_util.py#L205) | SparSTAR options (`sparstar*` fields of `Args`) |
-| [`tools/infer_video_720p.py`](tools/infer_video_720p.py#L142) | Command-line flags for the 720p demo |
-| [`tools/gen_vbench_720p.py`](tools/gen_vbench_720p.py) | **New.** VBench generation protocol of Tables 1 and 2 |
+| [`infinity/models/infinity.py`](infinity/models/infinity.py#L580) | `ar_infer_infinity_elegant` reads the options of each generation and implements the optional [+Guidance-off and +Scale-skip](infinity/models/infinity.py#L619) of Table 2 |
+| [`infinity/utils/arg_util.py`](infinity/utils/arg_util.py#L205) | SparSTAR options (`sparstar*` fields of `Args`; SparSTAR is on by default) |
+| [`tools/infer_video_720p.py`](tools/infer_video_720p.py#L142), [`tools/infer_video_480p.py`](tools/infer_video_480p.py#L158) | Command-line flags for the 720p / 480p demos |
+| [`tools/gen_vbench.py`](tools/gen_vbench.py) | **New.** VBench generation protocol of the paper (720p and 480p) |
 
-At every sparse scale (by default the last four scales of the 720p video clip, 26–29), and for every attention head:
+The sparse scales are the last four scales of the video clip: scales 26–29 (of 30) at 720p and 24–27 (of 28) at 480p.
+At each of them, and for every attention head:
 
 1. Queries and keys are split into contiguous blocks of 128 tokens, and every (query block, key block) pair is scored by the dot product of the two block means.
 2. The KV-cached conditioning prefix (reference scales and text) is always kept.
@@ -75,62 +79,78 @@ pip3 install flash-attn --no-build-isolation   # dense attention of InfinityStar
 The paper results were produced with Python 3.11, PyTorch 2.5.1 (CUDA 12.4) and flash-attn 2.7.4.post1 on NVIDIA H100 NVL GPUs.
 SparSTAR builds FlexAttention `BlockMask` objects directly and therefore expects PyTorch 2.5.1, the version pinned in `requirements.txt`.
 
-**Checkpoints.** SparSTAR uses the released InfinityStar 720p checkpoints:
+**Checkpoints.** SparSTAR uses the released InfinityStar checkpoints (download only the resolution you need):
 
 ```bash
 hf download FoundationVision/InfinityStar --revision 3480598274c0c87c342a24d201fa3549506b5be5 \
-    --include "infinitystar_8b_720p_weights/*" --include "text_encoder/*" --include "infinitystar_videovae.pth" \
+    --include "infinitystar_8b_720p_weights/*" --include "infinitystar_8b_480p_weights/*" \
+    --include "text_encoder/*" --include "infinitystar_videovae.pth" \
     --local-dir ./checkpoints
 ```
 
 ```
 checkpoints/
 ├── infinitystar_8b_720p_weights/
+├── infinitystar_8b_480p_weights/
 ├── infinitystar_videovae.pth
 └── text_encoder/flan-t5-xl-official/
 ```
 
 ## Inference
 
-`tools/infer_video_720p.py` is the InfinityStar 720p demo with SparSTAR flags added. Without flags it runs dense InfinityStar.
+`tools/infer_video_720p.py` and `tools/infer_video_480p.py` are the InfinityStar demos with SparSTAR built in.
+They run SparSTAR by default; add `--dense` for the original dense InfinityStar.
 
 ```bash
-# Text-to-video
+# 720p text-to-video
 python3 tools/infer_video_720p.py --checkpoints_dir ./checkpoints --image_path '' \
-    --prompt "A corgi running on the beach at sunset" --sparstar 1 --save_path output/t2v_sparstar.mp4
+    --prompt "A corgi running on the beach at sunset" --save_path output/720p_t2v.mp4
 
-# Image-to-video (default reference image: assets/reference_image.webp)
-python3 tools/infer_video_720p.py --checkpoints_dir ./checkpoints --sparstar 1 --save_path output/i2v_sparstar.mp4
+# 720p image-to-video (default reference image: assets/reference_image.webp)
+python3 tools/infer_video_720p.py --checkpoints_dir ./checkpoints --save_path output/720p_i2v.mp4
 
-# Table 2 add-ons
-python3 tools/infer_video_720p.py --checkpoints_dir ./checkpoints --sparstar 1 --sparstar_guidance_off 26   # + Guidance-off
-python3 tools/infer_video_720p.py --checkpoints_dir ./checkpoints --sparstar 1 --sparstar_scale_skip 29     # + Scale-skip
+# 480p 5 s text-to-video / image-to-video
+python3 tools/infer_video_480p.py --checkpoints_dir ./checkpoints --image_path '' \
+    --prompt "A corgi running on the beach at sunset" --save_path output/480p_t2v.mp4
+python3 tools/infer_video_480p.py --checkpoints_dir ./checkpoints --save_path output/480p_i2v.mp4
+
+# dense InfinityStar
+python3 tools/infer_video_720p.py --checkpoints_dir ./checkpoints --dense
+
+# Table 2 add-ons (720p)
+python3 tools/infer_video_720p.py --checkpoints_dir ./checkpoints --sparstar_guidance_off 26   # + Guidance-off
+python3 tools/infer_video_720p.py --checkpoints_dir ./checkpoints --sparstar_scale_skip 29     # + Scale-skip
 ```
 
 | Option | Default | Meaning |
 |---|---|---|
-| `--sparstar` | `0` | `1` enables block-sparse attention |
-| `--sparstar_density` | `26:0.625,27:0.1875,28:0.1875,29:0.09375` | `scale:ρ` pairs: the sparse scales and the fraction of current-scale key blocks kept at each (paper setting) |
-| `--sparstar_guidance_off` | `-1` | Scale index from which the unconditional CFG branch is dropped (`26` in Table 2); `-1` disables it |
-| `--sparstar_scale_skip` | `''` | Video scales that are not run (`29` in Table 2) |
+| `--dense` | off | Dense InfinityStar attention instead of SparSTAR |
+| `--sparstar_density` | `''` | `scale:ρ` pairs: the sparse scales and the fraction of current-scale key blocks kept at each. Empty means the paper setting: `26:0.625,27:0.1875,28:0.1875,29:0.09375` at 720p, `24:0.625,25:0.1875,26:0.1875,27:0.09375` at 480p |
+| `--sparstar_guidance_off` | `-1` | 720p only. Scale index from which the unconditional CFG branch is dropped (`26` in Table 2); `-1` disables it |
+| `--sparstar_scale_skip` | `''` | 720p only. Video scales that are not run (`29` in Table 2) |
 
+`tools/infer_video_480p.py --duration 10` (two video clips) always runs dense attention, since the long-video setting is not part of this release.
 The first SparSTAR generation in a process also compiles the FlexAttention kernels, so time the second and later generations.
 A 720p generation needs about 70 GB of GPU memory. The speedups in the paper are end-to-end wall-clock times on a single H100 NVL GPU that no other job was using.
 
-## Reproducing Tables 1 and 2
+## Reproducing the VBench results
 
-`tools/gen_vbench_720p.py` generates the 720p 5 s VBench videos with the protocol of the paper.
+`tools/gen_vbench.py` generates the 5 s VBench videos with the protocol of the paper.
 
-- **T2V.** 944 unique VBench prompts × 5 seeds (41–45). The GPT-refined prompts in `evaluation/VBench_rewrited_prompt.json` are the model input, and files are named after the official VBench prompts.
+- **T2V.** 944 unique VBench prompts; 5 seeds (41–45) at 720p and one seed (41) at 480p. The GPT-refined prompts in `evaluation/VBench_rewrited_prompt.json` are the model input, and files are named after the official VBench prompts.
 - **I2V.** 355 VBench-I2V images (16:9 crop), seed 41. Put `i2v-bench-info.json` and the cropped images (`crop/16-9/`) from [VBench-I2V](https://github.com/Vchitect/VBench/tree/master/vbench2_beta_i2v) under `data/vbench_i2v/`.
 
 ```bash
 CKPT=./checkpoints
 for TASK in t2v i2v; do
-  python3 tools/gen_vbench_720p.py --task $TASK --checkpoints_dir $CKPT --out_dir output/vbench/${TASK}_dense
-  python3 tools/gen_vbench_720p.py --task $TASK --checkpoints_dir $CKPT --out_dir output/vbench/${TASK}_sparstar --sparstar 1
-  python3 tools/gen_vbench_720p.py --task $TASK --checkpoints_dir $CKPT --out_dir output/vbench/${TASK}_goff      --sparstar 1 --sparstar_guidance_off 26
-  python3 tools/gen_vbench_720p.py --task $TASK --checkpoints_dir $CKPT --out_dir output/vbench/${TASK}_skip      --sparstar 1 --sparstar_scale_skip 29
+  # 720p: Tables 1 and 2
+  python3 tools/gen_vbench.py --task $TASK --checkpoints_dir $CKPT --out_dir output/vbench/720p_${TASK}_sparstar
+  python3 tools/gen_vbench.py --task $TASK --checkpoints_dir $CKPT --out_dir output/vbench/720p_${TASK}_dense --dense
+  python3 tools/gen_vbench.py --task $TASK --checkpoints_dir $CKPT --out_dir output/vbench/720p_${TASK}_goff --sparstar_guidance_off 26
+  python3 tools/gen_vbench.py --task $TASK --checkpoints_dir $CKPT --out_dir output/vbench/720p_${TASK}_skip --sparstar_scale_skip 29
+  # 480p: supplementary Table 7
+  python3 tools/gen_vbench.py --resolution 480p --task $TASK --checkpoints_dir $CKPT --out_dir output/vbench/480p_${TASK}_sparstar
+  python3 tools/gen_vbench.py --resolution 480p --task $TASK --checkpoints_dir $CKPT --out_dir output/vbench/480p_${TASK}_dense --dense
 done
 ```
 

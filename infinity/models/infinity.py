@@ -558,11 +558,6 @@ class Infinity(nn.Module):
         assert len(cfg_list) >= len(scale_schedule)
         assert len(tau_list) >= len(scale_schedule)
         assert args.use_cfg + args.use_apg == 1
-        # [SparSTAR] Read the SparSTAR options for this generation: block-sparse attention (applied inside
-        #   SelfAttention, infinity/models/basic.py) and the two optional add-ons of Table 2 handled in this loop.
-        sparstar.configure(args)
-        sparstar_guidance_off = getattr(args, 'sparstar_guidance_off', -1)  # first scale without the unconditional branch (-1: off)
-        sparstar_scale_skip = sparstar.parse_scale_list(getattr(args, 'sparstar_scale_skip', ''))  # video scales to skip
         device = label_B_or_BLT[0].device
         if self.apply_spatial_patchify:
             vae_scale_schedule = [(pt, 2*ph, 2*pw) for pt, ph, pw in scale_schedule]
@@ -582,6 +577,12 @@ class Infinity(nn.Module):
         scales_in_one_clip = first_full_spatial_size_scale_index + 1
         assert len(image_scale_repetition) == len(video_scale_repetition), f'{len(image_scale_repetition)} != {len(video_scale_repetition)}'
         assert len(image_scale_repetition) == scales_in_one_clip, f'{len(image_scale_repetition)} != {scales_in_one_clip}'
+        # [SparSTAR] Read the SparSTAR options for this generation: block-sparse attention (applied inside
+        #   SelfAttention, infinity/models/basic.py; on by default for 5 s videos) and the two optional add-ons of
+        #   Table 2 handled in this loop.
+        sparstar.configure(args, len(scale_schedule), scales_in_one_clip)
+        sparstar_guidance_off = getattr(args, 'sparstar_guidance_off', -1)  # first scale without the unconditional branch (-1: off)
+        sparstar_scale_skip = sparstar.parse_scale_list(getattr(args, 'sparstar_scale_skip', ''))  # video scales to skip
         total_steps = image_scale_repetition.sum() + video_scale_repetition.sum() * (len(scale_schedule)//len(video_scale_repetition)-1) + 1 # +1 is prefix text token forward step
         pbar = tqdm.tqdm(total=total_steps)
         block_chunks = self.block_chunks if self.num_block_chunks > 1 else self.blocks

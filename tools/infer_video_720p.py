@@ -139,15 +139,15 @@ if __name__ == '__main__':
     # export OPEN_API_KEY="YOUR_API_KEY"
     # export GLOBAL_AZURE_ENDPOINT="YOUR_ENDPOINT"
 
-    # [SparSTAR] Command-line options. Without flags this is the original InfinityStar demo (dense attention, I2V example).
+    # [SparSTAR] Command-line options. SparSTAR is on by default; --dense runs the original InfinityStar demo.
     parser = argparse.ArgumentParser()
     parser.add_argument('--checkpoints_dir', default='./')
     parser.add_argument('--prompt', default="A handsome smiling gardener inspecting plants, realistic cinematic lighting, detailed textures, ultra-realistic")
     parser.add_argument('--image_path', default='assets/reference_image.webp', help="reference image for I2V; pass '' for T2V")
     parser.add_argument('--seed', type=int, default=41)
     parser.add_argument('--save_path', default='output/gen_videos/demo.mp4')
-    parser.add_argument('--sparstar', type=int, default=0, help='1: SparSTAR block-sparse attention (Table 1)')
-    parser.add_argument('--sparstar_density', default='26:0.625,27:0.1875,28:0.1875,29:0.09375', help='per-scale key-block keep ratio')
+    parser.add_argument('--dense', action='store_true', help='dense InfinityStar attention instead of SparSTAR')
+    parser.add_argument('--sparstar_density', default='', help="per-scale key-block keep ratio, e.g. '26:0.625,27:0.1875,28:0.1875,29:0.09375' (default)")
     parser.add_argument('--sparstar_guidance_off', type=int, default=-1, help='26: "+Guidance-off" of Table 2')
     parser.add_argument('--sparstar_scale_skip', default='', help='"29": "+Scale-skip" of Table 2')
     cli = parser.parse_args()
@@ -184,7 +184,7 @@ if __name__ == '__main__':
     args.max_repeat_times=10000
     args.enable_rewriter=enable_rewriter
     # [SparSTAR] inference options (read by Infinity.ar_infer_infinity_elegant)
-    args.sparstar = cli.sparstar
+    args.sparstar = 0 if cli.dense else 1
     args.sparstar_density = cli.sparstar_density
     args.sparstar_guidance_off = cli.sparstar_guidance_off
     args.sparstar_scale_skip = cli.sparstar_scale_skip

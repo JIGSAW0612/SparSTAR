@@ -205,8 +205,8 @@ class Args(Tap):
     # ============================================ [SparSTAR] Inference ================================================
     # ==================================================================================================================
     # [SparSTAR] Training-free block-sparse attention (infinity/models/sparstar.py). All options are inference-only.
-    sparstar: int = 0  # [SparSTAR] 1: block-sparse attention on the scales listed in sparstar_density
-    sparstar_density: str = '26:0.625,27:0.1875,28:0.1875,29:0.09375'  # [SparSTAR] "scale_index:keep_ratio,..." fraction of current-scale key blocks kept per scale (720p 5s setting of the paper)
+    sparstar: int = 1  # [SparSTAR] 1 (default): block-sparse attention for 5 s videos; 0: dense InfinityStar (the --dense flag of the inference scripts)
+    sparstar_density: str = ''  # [SparSTAR] "scale_index:keep_ratio,..." fraction of current-scale key blocks kept per scale; '': paper setting on the last four scales (720p: 26-29, 480p: 24-27)
     sparstar_block_size: int = 128  # [SparSTAR] query/key block size (128 in the paper)
     sparstar_guidance_off: int = -1  # [SparSTAR] >= 0: drop the unconditional CFG branch from this scale index on (Table 2 "+Guidance-off" uses 26); -1: off
     sparstar_scale_skip: str = ''  # [SparSTAR] comma-separated video scale indices to skip (Table 2 "+Scale-skip" uses "29"); '': off

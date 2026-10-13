@@ -12,8 +12,13 @@ At every expensive late scale (and for every attention head), SparSTAR
 The selection is recomputed at every target scale; no mask is reused across scales or clips.
 Every token and every refinement scale is still generated, and all other scales run dense attention.
 
+SparSTAR is on by default for 5 s (single video clip) generation at 720p and 480p; pass `--dense` to the
+inference scripts (args.sparstar = 0) for the original dense InfinityStar. By default the last four scales
+of the video clip are sparse (720p: scales 26-29 of 30, 480p: scales 24-27 of 28) with the paper densities.
+Multi-clip (10 s long-video) generation is not part of this release and runs dense attention.
+
 Entry points:
-  configure(args)          read the SparSTAR options from `args` (see infinity/utils/arg_util.py)
+  configure(args, ...)     read the SparSTAR options from `args` (see infinity/utils/arg_util.py)
   is_sparse_scale(si)      whether scale `si` runs block-sparse attention
   block_sparse_attention   the sparse attention itself, called from SelfAttention.forward (infinity/models/basic.py)
   parse_scale_list         helper for the comma-separated scale lists used by the generation loop
@@ -24,8 +29,9 @@ from typing import Dict, Set
 import torch
 import torch.nn.functional as F
 
-# Paper setting for 720p 5 s generation (Table 1): the last four scales of the video clip.
-DEFAULT_DENSITY = '26:0.625,27:0.1875,28:0.1875,29:0.09375'
+# Paper setting (720p Table 1, 480p supp. Table 7): fraction of key blocks kept at the last four scales
+# of the video clip, coarse to fine.
+DEFAULT_RATIOS = (0.625, 0.1875, 0.1875, 0.09375)
 
 _CONFIG = {'enabled': False, 'density': {}, 'block_size': 128}
 _FLEX = None
@@ -46,10 +52,21 @@ def parse_scale_list(spec: str) -> Set[int]:
     return {int(x) for x in str(spec).split(',') if x.strip()}
 
 
-def configure(args) -> None:
-    """Read the SparSTAR options from `args`. Called at the start of every generation."""
-    _CONFIG['enabled'] = bool(getattr(args, 'sparstar', 0))
-    _CONFIG['density'] = parse_density(getattr(args, 'sparstar_density', DEFAULT_DENSITY)) if _CONFIG['enabled'] else {}
+def default_density(num_scales: int) -> Dict[int, float]:
+    """Paper densities on the last four scales: {26: .625, 27: .1875, 28: .1875, 29: .09375} at 720p (30 scales),
+    {24: .625, ..., 27: .09375} at 480p (28 scales)."""
+    first = num_scales - len(DEFAULT_RATIOS)
+    return {first + i: ratio for i, ratio in enumerate(DEFAULT_RATIOS)}
+
+
+def configure(args, num_scales: int, scales_in_one_clip: int) -> None:
+    """Read the SparSTAR options from `args`. Called at the start of every generation with the length of the
+    scale schedule and the number of scales per clip (image clip + video clips)."""
+    num_video_clips = num_scales // scales_in_one_clip - 1
+    enabled = bool(getattr(args, 'sparstar', 1)) and num_video_clips == 1  # images (no video clip) and long videos run dense
+    spec = getattr(args, 'sparstar_density', '')
+    _CONFIG['enabled'] = enabled
+    _CONFIG['density'] = (parse_density(spec) if spec else default_density(num_scales)) if enabled else {}
     _CONFIG['block_size'] = int(getattr(args, 'sparstar_block_size', 128))
 
 
