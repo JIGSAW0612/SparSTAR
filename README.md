@@ -10,7 +10,7 @@
   Sogang University &nbsp;·&nbsp; <sup>*</sup>Equal contribution &nbsp;·&nbsp; <sup>†</sup>Corresponding author
 </p>
 
-![SparSTAR teaser](https://jigsaw0612.github.io/SparSTAR_project_page/static/images/teaser.png)
+![SparSTAR teaser](assets/sparstar/teaser.png)
 
 ## 🔥 News
 
@@ -31,6 +31,26 @@ text-to-video and image-to-video generation, SparSTAR preserves every token and 
 providing about a **1.6× end-to-end speedup** and maintaining VBench and paired-output reconstruction
 fidelity close to dense InfinityStar.
 
+<p align="center">
+  <img src="assets/sparstar/method_overview.png" width="90%">
+</p>
+
+## 📈 Results
+
+**720p text-to-video and image-to-video** (PSNR / SSIM / LPIPS are measured against the dense InfinityStar output with the same prompt and seed)
+
+<p align="center"><img src="assets/sparstar/table1_720p.png" width="95%"></p>
+
+**Combination with Scale-skip and Guidance-off (720p)**
+
+<p align="center"><img src="assets/sparstar/table2_compat.png" width="95%"></p>
+
+**480p text-to-video and image-to-video (5 s)**
+
+<p align="center"><img src="assets/sparstar/table3_480p_5s.png" width="95%"></p>
+
+Video comparisons with dense InfinityStar are on the [project page](https://jigsaw0612.github.io/SparSTAR_project_page/).
+
 ## 🛠️ Installation
 
 ### Environment
@@ -47,8 +67,7 @@ pip install -r requirements.txt                # includes torch==2.5.1
 pip install flash-attn --no-build-isolation     # dense attention at the non-sparse scales
 ```
 
-SparSTAR builds FlexAttention block masks with the PyTorch 2.5.1 API, so keep `torch==2.5.1` as pinned in `requirements.txt`.
-We tested with CUDA 12.4, flash-attn 2.7.4.post1 and NVIDIA H100 GPUs.
+We recommend CUDA 12.4 + PyTorch 2.5.1 (pinned in `requirements.txt`; SparSTAR uses its FlexAttention API).
 
 ### Checkpoints
 
@@ -113,14 +132,10 @@ python tools/infer_video_480p.py --checkpoints_dir ./checkpoints \
 > [!NOTE]
 > - The first SparSTAR generation in a process also compiles the FlexAttention kernels, so measure speed from the second generation on.
 > - A 720p generation needs about 70 GB of GPU memory. The paper's speedups are end-to-end times on a single H100 NVL GPU.
-> - 10 s (two-clip) generation with `tools/infer_video_480p.py --duration 10` runs dense attention.
 
 ## 📊 Evaluation
 
-`tools/gen_vbench.py` generates the VBench videos with the protocol of the paper.
-
-- **T2V**: 944 VBench prompts with seeds 41–45 at 720p and seed 41 at 480p. The refined prompts in `evaluation/VBench_rewrited_prompt.json` are the model input; files are named after the original VBench prompts.
-- **I2V**: 355 VBench-I2V images (16:9 crop) with seed 41. Download `i2v-bench-info.json` and `crop/16-9/` from [VBench-I2V](https://github.com/Vchitect/VBench/tree/master/vbench2_beta_i2v) into `data/vbench_i2v/`.
+`tools/gen_vbench.py` generates the VBench videos used in the paper. For I2V, download the [VBench-I2V](https://github.com/Vchitect/VBench/tree/master/vbench2_beta_i2v) images into `data/vbench_i2v/` first.
 
 ```bash
 # 720p (Tables 1 and 2)
@@ -136,9 +151,8 @@ python tools/gen_vbench.py --resolution 480p --task t2v --checkpoints_dir ./chec
 # I2V: the same commands with --task i2v
 ```
 
-- Runs can be split across GPUs with `--start/--end`, and finished videos are skipped when a run is restarted. Restarting the process every ~100 videos keeps the memory of the compiled sparse kernels bounded.
-- **VBench**: run the official [VBench](https://github.com/Vchitect/VBench) / VBench-I2V evaluation on `<out_dir>/mp4`.
-- **PSNR / SSIM / LPIPS**: videos with the same file name in the SparSTAR and dense folders share the prompt and seed; compare them frame by frame.
+Runs can be split across GPUs with `--start/--end`, and finished videos are skipped when a run is restarted.
+Run the official [VBench](https://github.com/Vchitect/VBench) / VBench-I2V evaluation on `<out_dir>/mp4`.
 
 ## 🧩 Implementation
 
@@ -152,15 +166,6 @@ The main implementation of SparSTAR is highlighted with `[SparSTAR]` annotations
 | [`infinity/utils/arg_util.py`](infinity/utils/arg_util.py#L205) | SparSTAR options |
 | [`tools/infer_video_720p.py`](tools/infer_video_720p.py#L142), [`tools/infer_video_480p.py`](tools/infer_video_480p.py#L158) | Command-line options |
 | [`tools/gen_vbench.py`](tools/gen_vbench.py) | VBench generation |
-
-At each of the last four scales of the video clip (720p: scales 26–29, 480p: 24–27) and for every attention head, SparSTAR
-
-1. scores contiguous 128-token key blocks against each query block with the dot product of their mean vectors,
-2. always keeps the KV-cached conditioning context (reference scales and text),
-3. keeps the top-scoring key blocks of the current scale up to the per-scale density, and
-4. runs FlexAttention on the selected blocks through a forward-only block mask.
-
-The selection is recomputed at every scale; all other scales use dense attention.
 
 ## 🔗 BibTeX
 
