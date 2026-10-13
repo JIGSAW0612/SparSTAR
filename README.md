@@ -63,8 +63,9 @@ cd SparSTAR
 
 conda create -n sparstar python=3.11 -y
 conda activate sparstar
-pip install -r requirements.txt                # includes torch==2.5.1
-pip install flash-attn --no-build-isolation     # dense attention at the non-sparse scales
+pip install -r requirements.txt                          # includes torch==2.5.1
+pip install packaging psutil ninja                       # build requirements of flash-attn
+pip install flash-attn==2.7.4.post1 --no-build-isolation  # dense attention at the non-sparse scales
 ```
 
 We recommend CUDA 12.4 + PyTorch 2.5.1 (pinned in `requirements.txt`; SparSTAR uses its FlexAttention API).
@@ -82,8 +83,8 @@ SparSTAR is training-free and runs the released InfinityStar checkpoints from Hu
 
 ```bash
 hf download FoundationVision/InfinityStar --revision 3480598274c0c87c342a24d201fa3549506b5be5 \
-    --include "infinitystar_8b_720p_weights/*" --include "infinitystar_8b_480p_weights/*" \
-    --include "text_encoder/*" --include "infinitystar_videovae.pth" \
+    --include "infinitystar_8b_720p_weights/*" "infinitystar_8b_480p_weights/*" \
+              "text_encoder/*" "infinitystar_videovae.pth" \
     --local-dir ./checkpoints
 ```
 
